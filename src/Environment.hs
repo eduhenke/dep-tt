@@ -17,13 +17,6 @@ runTcMonad :: Env -> TcMonad a -> IO (Either Err a)
 runTcMonad env m = do
   runExceptT $ runReaderT (Unbound.runFreshMT m) env
 
-inferType :: Term -> TcMonad Type
-inferType t = tcTerm t Nothing
-
-checkType :: Term -> Type -> TcMonad ()
-checkType tm (Ann ty _) = checkType tm ty
-checkType tm ty = void $ tcTerm tm (Just ty)
-
 type Ctx = [(TName, Type)]
 
 data Env = Env {ctx :: Ctx}
@@ -33,15 +26,25 @@ emptyEnv = Env {ctx = []}
 
 -- | Extend the context with a new binding
 extendCtx :: (TName, Type) -> TcMonad a -> TcMonad a
-extendCtx d =
-  local (\m@Env {ctx = cs} -> m {ctx = d : cs})
+extendCtx d = local (\m@Env {ctx = cs} -> m {ctx = d : cs})
+
+inferType :: Term -> TcMonad Type
+inferType t = tcTerm t Nothing
+
+checkType :: Term -> Type -> TcMonad ()
+checkType tm (Ann ty _) = checkType tm ty
+checkType tm ty = do
+  ty' <- tcTerm tm (Just ty)
+  traceM ("Checked " ++ show tm ++ " : " ++ show ty')
+  pure ()
 
 -- | Make sure that the term is a type (i.e. has type 'Type')
 tcType :: Term -> TcMonad ()
 tcType tm = void $ checkType tm Type
 
 tcTerm :: Term -> Maybe Type -> TcMonad Type
-tcTerm tm ty | trace (show tm ++ " | " ++ show ty) False = undefined
+tcTerm tm Nothing | trace ("Inferring " ++ show tm) False = undefined
+tcTerm tm (Just ty) | trace ("Checking (" ++ show tm ++ ") = " ++ show ty) False = undefined
 tcTerm (Var x) Nothing = lookupTy x
 tcTerm Type Nothing = return Type
 tcTerm (Ann tm ty) Nothing = do
@@ -82,14 +85,7 @@ lookupTyMaybe :: TName -> TcMonad (Maybe Type)
 lookupTyMaybe v = do
   ctx <- asks ctx
   traceShowM ctx
-  -- return $ go ctx
   return $ snd <$> find ((== v) . fst) ctx
-  where
-    go :: Ctx -> Maybe Type
-    go [] = Nothing
-    go ((x, ty) : ctx)
-      | v == x = Just ty
-      | otherwise = go ctx
 
 lookupTy :: TName -> TcMonad Type
 lookupTy v = do
@@ -98,7 +94,7 @@ lookupTy v = do
     Just ty -> return ty
     Nothing -> err ["The variable " ++ show v ++ " was not found."]
 
-data Err = Err String deriving (Show)
+data Err = Err String deriving (Show, Eq)
 
 instance Semigroup Err where
   (Err msg1) <> (Err msg2) = Err (msg1 ++ msg2)

@@ -55,3 +55,4 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - dep-tt
+    - HUnit
