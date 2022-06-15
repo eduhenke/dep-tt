@@ -2,6 +2,7 @@ module Lib (var, bind, typeCheck) where
 
 import Environment
 import Syntax
+import TypeCheck
 import qualified Unbound.Generics.LocallyNameless as Unbound
 
 var :: String -> TName

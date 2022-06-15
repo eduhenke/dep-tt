@@ -26,8 +26,10 @@ source-repository head
 library
   exposed-modules:
       Environment
+      Equality
       Lib
       Syntax
+      TypeCheck
   other-modules:
       Paths_dep_tt
   hs-source-dirs:
