@@ -16,7 +16,6 @@ inferType :: Term -> TcMonad Type
 inferType t = tcTerm t Nothing
 
 checkType :: Term -> Type -> TcMonad ()
-checkType tm (Ann ty _) = checkType tm ty
 checkType tm ty = do
   -- Whenever we call checkType we should call it with a term that has already
   -- been reduced to normal form. This will allow rule c-lam to match against
