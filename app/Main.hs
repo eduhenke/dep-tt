@@ -1,16 +1,15 @@
 module Main where
 
+import Control.Monad.Except (runExceptT)
 import Lib
 import Syntax
-import System.IO (putStrLn)
+import System.Environment
+import System.IO
 
 main :: IO ()
 main = do
-  let x = var "x"
-      y = var "y"
-      -- (x : Type) -> (y : x) -> x
-      idTy = Pi Type $ bind x $ Pi (Var x) $ bind y $ Var x
-  result <- typeCheck idTy
+  [pathToFile] <- getArgs
+  result <- runExceptT $ compile pathToFile
   case result of
-    Left err -> print err
+    Left err -> putStrLn err
     Right term -> putStrLn $ "Successfully type checked! resulting term: " ++ show term

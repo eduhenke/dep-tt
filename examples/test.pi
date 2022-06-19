@@ -1,0 +1,1 @@
+(λp. λq. (c: Type) → (p → q → c) → c) : (Type → Type → Type)

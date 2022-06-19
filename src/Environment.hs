@@ -28,15 +28,8 @@ emptyEnv = Env {ctx = []}
 extendCtx :: (TName, Type) -> TcMonad a -> TcMonad a
 extendCtx d = local (\m@Env {ctx = cs} -> m {ctx = d : cs})
 
-data Err = Err String deriving (Show, Eq)
-
-instance Semigroup Err where
-  (Err msg1) <> (Err msg2) = Err (msg1 ++ msg2)
-
-instance Monoid Err where
-  mempty = Err []
-  mappend (Err msg1) (Err msg2) = Err (msg1 ++ msg2)
+type Err = String
 
 err :: [String] -> TcMonad b
 err d = do
-  throwError $ Err $ unwords d
+  throwError $ unwords d

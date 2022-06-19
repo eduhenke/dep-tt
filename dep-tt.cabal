@@ -28,6 +28,7 @@ library
       Environment
       Equality
       Lib
+      Parser
       Syntax
       TypeCheck
   other-modules:
@@ -35,11 +36,14 @@ library
   hs-source-dirs:
       src
   default-extensions:
-      DeriveGeneric MultiParamTypeClasses DeriveAnyClass DerivingStrategies
+      DeriveGeneric MultiParamTypeClasses DeriveAnyClass DerivingStrategies FlexibleInstances
   build-depends:
       base >=4.7 && <5
+    , megaparsec
     , mtl
+    , parser-combinators
     , pretty
+    , transformers
     , unbound-generics
   default-language: Haskell2010
 
@@ -50,13 +54,16 @@ executable dep-tt-exe
   hs-source-dirs:
       app
   default-extensions:
-      DeriveGeneric MultiParamTypeClasses DeriveAnyClass DerivingStrategies
+      DeriveGeneric MultiParamTypeClasses DeriveAnyClass DerivingStrategies FlexibleInstances
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
     , dep-tt
+    , megaparsec
     , mtl
+    , parser-combinators
     , pretty
+    , transformers
     , unbound-generics
   default-language: Haskell2010
 
@@ -68,13 +75,16 @@ test-suite dep-tt-test
   hs-source-dirs:
       test
   default-extensions:
-      DeriveGeneric MultiParamTypeClasses DeriveAnyClass DerivingStrategies
+      DeriveGeneric MultiParamTypeClasses DeriveAnyClass DerivingStrategies FlexibleInstances
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       HUnit
     , base >=4.7 && <5
     , dep-tt
+    , megaparsec
     , mtl
+    , parser-combinators
     , pretty
+    , transformers
     , unbound-generics
   default-language: Haskell2010

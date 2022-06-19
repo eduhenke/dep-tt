@@ -24,6 +24,9 @@ dependencies:
 - unbound-generics
 - mtl
 - pretty
+- megaparsec
+- parser-combinators
+- transformers
 
 library:
   source-dirs: src
@@ -33,6 +36,7 @@ default-extensions:
   MultiParamTypeClasses
   DeriveAnyClass
   DerivingStrategies
+  FlexibleInstances
 
 executables:
   dep-tt-exe:
