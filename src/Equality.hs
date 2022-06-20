@@ -25,6 +25,13 @@ equate t1 t2 = do
     (_, _) -> err ["Expected", show nf2, "but found", show nf1]
 
 whnf :: Term -> TcMonad Term
+-- strangely WHNF-Var has a different implementation
+-- than what was provided in the paper
+whnf (Var x) = do
+  maybeTm <- lookupDefMaybe x
+  pure $ case maybeTm of
+    Nothing -> Var x
+    Just tm -> tm
 whnf (App a b) = do
   v <- whnf a
   case v of

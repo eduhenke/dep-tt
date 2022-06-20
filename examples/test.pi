@@ -1,1 +1,41 @@
-(λp. λq. (c: Type) → (p → q → c) → c) : (Type → Type → Type)
+// bool : Type
+// bool = (x : Type) → x → x → x
+// 
+// true : bool
+// true = λx. λy. λz. y
+// 
+// false : bool
+// false = λx. λy. λz. z
+// 
+// cond : bool → (x:Type) → x → x → x
+// cond = λb. b
+// 
+// and : Type → Type → Type
+// and = λp. λq. (c: Type) → (p → q → c) → c
+// 
+// conj : (p: Type) → (q:Type) → p → q → and p q
+// conj = λp.λq. λx.λy. λc. λf. f x y
+// 
+// proj1 : (p: Type) → (q:Type) → and p q → p
+// proj1 = λp. λq. λa. a p (λx. λy. x)
+// 
+// proj2 : (p: Type) → (q:Type) → and p q → q
+// proj2 = λp. λq. λa. a q (λx. λy. y)
+// 
+// and_commutes : (p:Type) → (q:Type) → and p q → and q p
+// and_commutes = λp. λq. λa. conj q p (proj2 p q a) (proj1 p q a) 
+
+nat : Type
+nat = (x : Type) -> x -> (x->x) -> x
+
+z : nat
+z = λx. λzf. λsf. zf
+
+s : nat -> nat
+s = λn. λx. λzf. λsf. sf (n x zf sf)
+
+one = s z
+two = s one
+
+plus : nat -> nat -> nat
+plus = λx. λy. x nat y s

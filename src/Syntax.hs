@@ -22,7 +22,15 @@ data Term
 data Arg = Arg {unArg :: Term}
   deriving (Show, Generic, Unbound.Alpha, Unbound.Subst Term)
 
--- deriving anyclass (Unbound.Alpha, Unbound.Subst Term)
+data Decl
+  = TypeSig TName Type
+  | Def TName Term
+  deriving (Show)
+
+data Module = Module
+  { declarations :: [Decl]
+  }
+  deriving (Show)
 
 type Type = Term
 

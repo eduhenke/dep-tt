@@ -4,7 +4,7 @@ import Control.Monad.Except
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
 import Environment
-import Parser (parse)
+import Parser (parseModule)
 import Syntax
 import System.Environment (getArgs)
 import TypeCheck
@@ -19,13 +19,16 @@ bind = Unbound.bind
 typeCheck :: Term -> IO (Either Err Type)
 typeCheck term = runTcMonad emptyEnv $ inferType term
 
-compile :: String -> ExceptT String IO Term
+typeCheckModule :: Module -> IO (Either Err Module)
+typeCheckModule m = runTcMonad emptyEnv $ tcModule m
+
+compile :: String -> ExceptT String IO Module
 compile fileName = do
   content <- liftIO $ readFile fileName
   liftIO $ putStrLn $ "parsing " ++ fileName ++ "..."
-  parsed <- liftEither $ parse fileName content
+  parsed <- liftEither $ parseModule fileName content
   liftIO $ print parsed
   -- val <- v `exitWith` putParseError
   liftIO $ putStrLn "type checking..."
-  ty' <- liftIO $ typeCheck parsed
-  liftEither ty'
+  m <- liftIO $ typeCheckModule parsed
+  liftEither m

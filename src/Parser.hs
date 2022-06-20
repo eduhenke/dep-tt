@@ -34,7 +34,7 @@ spaceConsumer =
     case hasSpace of
       Nothing -> return ()
       Just _ -> do
-        hasIdentifier <- optional letterChar
+        hasIdentifier <- optional $ choice [letterChar, char '(']
         -- o' <- getOffset
         -- i' <- getInput
         -- traceM $ "hasIdentifier: " ++ show hasIdentifier ++ " (" ++ show o' ++ "; " ++ show i' ++ ")"
@@ -69,10 +69,13 @@ symbol :: String -> Parser String
 symbol = L.symbol sc
 
 symbol' :: String -> Parser String
-symbol' = lexeme . string
+symbol' = lexeme' . string
 
 identifier :: Parser String
-identifier = some letterChar <?> "identifier"
+identifier = label "identifier" $ do
+  c <- letterChar
+  cs <- many $ choice [alphaNumChar, char '_']
+  pure $ c : cs
 
 parens :: Parser a -> Parser a
 parens = between (symbol' "(") (symbol' ")")
@@ -90,6 +93,8 @@ dot = lexeme $ char '.'
 arrow = choice [symbol "->", symbol "→"]
 
 colon = lexeme $ char ':'
+
+eqSymbol = symbol "="
 
 lam :: Parser Term
 lam = label "lambda" $ do
@@ -119,13 +124,14 @@ piTy = do
 
 nonApp :: Parser Term
 nonApp =
-  choice
-    [ type',
-      lam,
-      piTy,
-      try variable,
-      parens expr
-    ]
+  dbg "nonApp" $
+    choice
+      [ dbg "type" type',
+        dbg "lam" lam,
+        dbg "piTy" piTy,
+        dbg "var" $ try variable,
+        parens $ dbg "parens" expr
+      ]
 
 expr :: Parser Term
 expr =
@@ -133,13 +139,30 @@ expr =
     nonApp
     [[InfixL app], [InfixR annotation], [InfixR wildcardPiTy]]
   where
-    app = (\t1 t2 -> App t1 (Arg t2)) <$ space1
+    app = (\t1 t2 -> App t1 (Arg t2)) <$ dbg "app space" hspace1
     annotation = Ann <$ colon
     wildcardPiTy =
       (\varName t1 t2 -> Pi t1 $ Unbound.bind varName t2)
         <$> (arrow *> Unbound.fresh wildcardName)
 
-parse :: String -> String -> Either String Term
-parse fileName input = case Unbound.runFreshM $ runParserT (expr <* eof) fileName input of
+module' :: Parser Module
+module' = do
+  symbol "" -- consume initial space/comments
+  decls <- many $ lexeme $ choice [def, typeSig]
+  return $ Module {declarations = decls}
+  where
+    typeSig = dbg "typeSig" $
+      try $ do
+        name <- binder
+        colon
+        TypeSig name <$> expr
+    def = dbg "def" $
+      try $ do
+        name <- binder
+        eqSymbol
+        Def name <$> expr
+
+parseModule :: String -> String -> Either String Module
+parseModule fileName input = case Unbound.runFreshM $ runParserT (module' <* eof) fileName input of
   Left err -> Left $ errorBundlePretty err
   Right t -> Right t

@@ -12,4 +12,4 @@ main = do
   result <- runExceptT $ compile pathToFile
   case result of
     Left err -> putStrLn err
-    Right term -> putStrLn $ "Successfully type checked! resulting term: " ++ show term
+    Right term -> putStrLn $ "Successfully type checked!"
