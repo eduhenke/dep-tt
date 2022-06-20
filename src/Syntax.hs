@@ -17,6 +17,9 @@ data Term
   | App Term Arg
   | Pi Type (Unbound.Bind TName Type) -- function types: (x : A) -> B
   | Ann Term Type -- "ascription" or "annotated terms": (a: A)
+  | TyEq Type Type
+  | Refl
+  | Subst Term Term
   deriving (Show, Generic)
 
 data Arg = Arg {unArg :: Term}

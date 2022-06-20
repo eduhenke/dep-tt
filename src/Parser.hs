@@ -34,20 +34,29 @@ spaceConsumer =
     case hasSpace of
       Nothing -> return ()
       Just _ -> do
-        hasIdentifier <- optional $ choice [letterChar, char '(']
+        hasIdentifier <- optional $ choice [some letterChar, string "("]
         -- o' <- getOffset
         -- i' <- getInput
         -- traceM $ "hasIdentifier: " ++ show hasIdentifier ++ " (" ++ show o' ++ "; " ++ show i' ++ ")"
         case hasIdentifier of
           Nothing -> return ()
-          Just _ -> do
-            -- o' <- getOffset
-            -- traceM $ "setting offset back from " ++ show o' ++ " to " ++ show o
-            setOffset o
-            setInput i
-            -- o' <- getOffset
-            -- traceM $ "set offset to: " ++ show o'
-            return ()
+          Just x -> do
+            o' <- getOffset
+            if x `elem` reserved
+              then do
+                -- traceM $ "setting offset back from " ++ show o' ++ " to " ++ show (o + 1)
+                setOffset (o+1)
+                setInput (tail i)
+                o' <- getOffset
+                -- traceM $ "set offset to: " ++ show o'
+                return ()
+              else do
+                -- traceM $ "setting offset back from " ++ show o' ++ " to " ++ show o
+                setOffset o
+                setInput i
+                o' <- getOffset
+                -- traceM $ "set offset to: " ++ show o'
+                return ()
 
 -- space consumer
 sc :: Parser ()
@@ -71,11 +80,16 @@ symbol = L.symbol sc
 symbol' :: String -> Parser String
 symbol' = lexeme' . string
 
+reserved = ["by", "subst"]
+
 identifier :: Parser String
 identifier = label "identifier" $ do
   c <- letterChar
   cs <- many $ choice [alphaNumChar, char '_']
-  pure $ c : cs
+  let x = c : cs
+  if x `elem` reserved
+    then fail $ "keyword " ++ show x ++ " cannot be an identifier"
+    else return x
 
 parens :: Parser a -> Parser a
 parens = between (symbol' "(") (symbol' ")")
@@ -99,16 +113,20 @@ eqSymbol = symbol "="
 lam :: Parser Term
 lam = label "lambda" $ do
   lambdaSymbol
-  varName <- binder
+  vars <- some $ lexeme binder
   dot
-  Lam . Unbound.bind varName <$> expr
+  body <- expr
+  return $ foldr mergeLam body vars
+  where
+    mergeLam :: TName -> Term -> Term
+    mergeLam n tm = Lam $ Unbound.bind n tm
 
-type' :: Parser Term
+type' :: Parser Type
 type' = try $ Type <$ symbol "Type"
 
 wildcardName = Unbound.string2Name "_"
 
-piTy :: Parser Term
+piTy :: Parser Type
 piTy = do
   (varName, ty) <-
     choice
@@ -122,13 +140,26 @@ piTy = do
   arrow
   Pi ty . Unbound.bind varName <$> expr
 
+refl :: Parser Term
+refl = Refl <$ symbol "Refl"
+
+subst :: Parser Term
+subst = do
+  symbol "subst"
+  a <- expr
+  symbol "by"
+  b <- expr
+  return $ Subst a b
+
 nonApp :: Parser Term
 nonApp =
   dbg "nonApp" $
     choice
-      [ dbg "type" type',
+      [ dbg "subst" $ try subst,
+        dbg "type" type',
         dbg "lam" lam,
         dbg "piTy" piTy,
+        dbg "refl" $ try refl,
         dbg "var" $ try variable,
         parens $ dbg "parens" expr
       ]
@@ -137,13 +168,14 @@ expr :: Parser Term
 expr =
   makeExprParser
     nonApp
-    [[InfixL app], [InfixR annotation], [InfixR wildcardPiTy]]
+    [[InfixR eqTy], [InfixL app], [InfixR annotation], [InfixR wildcardPiTy]]
   where
     app = (\t1 t2 -> App t1 (Arg t2)) <$ dbg "app space" hspace1
     annotation = Ann <$ colon
     wildcardPiTy =
       (\varName t1 t2 -> Pi t1 $ Unbound.bind varName t2)
         <$> (arrow *> Unbound.fresh wildcardName)
+    eqTy = TyEq <$ eqSymbol
 
 module' :: Parser Module
 module' = do

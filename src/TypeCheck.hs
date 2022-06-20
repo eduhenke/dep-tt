@@ -50,11 +50,15 @@ tcTerm (App t1 t2) Nothing = do
       ensurePi (Pi tyA bnd) = do
         (x, tyB) <- unbind bnd
         return (x, tyA, tyB)
-      ensurePi ty = err ["Expected a function type but found ", show ty]
+      ensurePi ty = err ["Expected a function type, but found ", show ty]
   nf1 <- whnf ty1
   (x, tyA, tyB) <- ensurePi nf1
   checkType (unArg t2) tyA
   return $ subst x (unArg t2) tyB
+tcTerm (TyEq a b) Nothing = do
+  tyA <- inferType a
+  checkType b tyA
+  return Type
 tcTerm (Lam bnd) (Just ty@(Pi tyA bnd')) = do
   tcType tyA
   -- warning: you can't use unbind two times in a row here,
@@ -63,6 +67,23 @@ tcTerm (Lam bnd) (Just ty@(Pi tyA bnd')) = do
   extendCtx (TypeSig x tyA) (checkType body tyB)
   return ty
 tcTerm (Lam _) (Just nf) = err ["Lambda expression should have a function type, not ", show nf]
+tcTerm Refl (Just ty@(TyEq a b)) = do
+  a `equate` b
+  return ty
+tcTerm Refl (Just ty) = err ["Refl must be annotated with a equality type, but was annotated with: ", show ty]
+tcTerm (Subst a b) (Just ty) = do
+  tyProof <- inferType b
+  let ensureTyEq :: Type -> TcMonad (Type, Type)
+      ensureTyEq ty = do
+        nf <- whnf ty
+        case nf of
+          TyEq m n -> return (m, n)
+          _ -> err ["Expected an equality type, but found ", show ty]
+  (m, n) <- ensureTyEq tyProof
+  eqDecl <- def m n
+  proofDecl <- def b Refl
+  extendCtxs (eqDecl ++ proofDecl) $ checkType a ty
+  return ty
 tcTerm tm (Just ty) = do
   ty' <- inferType tm
   ty `equate` ty'
@@ -93,3 +114,15 @@ tcModule m = do
       traceM ("tcDecl: " ++ show decl ++ ", decls_ctx: " ++ show decls)
       extendCtxs decls $ tcType ty
       pure $ decl : decls
+
+-- helpers
+
+-- Create a Def if either side normalizes to a single variable
+def :: Term -> Term -> TcMonad [Decl]
+def t1 t2 = do
+  nf1 <- whnf t1
+  nf2 <- whnf t2
+  case (nf1, nf2) of
+    (Var x, _) -> return [Def x nf2]
+    (_, Var x) -> return [Def x nf1]
+    _ -> return []

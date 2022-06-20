@@ -1,5 +1,6 @@
 module Equality where
 
+import Data.Maybe (fromMaybe)
 import Environment
 import Syntax
 import Unbound.Generics.LocallyNameless
@@ -29,9 +30,7 @@ whnf :: Term -> TcMonad Term
 -- than what was provided in the paper
 whnf (Var x) = do
   maybeTm <- lookupDefMaybe x
-  pure $ case maybeTm of
-    Nothing -> Var x
-    Just tm -> tm
+  pure $ fromMaybe (Var x) maybeTm
 whnf (App a b) = do
   v <- whnf a
   case v of
