@@ -1,5 +1,5 @@
 sym : (A: Type) → (x:A) -> (y:A) -> (x = y) -> y = x
-sym = \a x y eq. subst Refl by eq
+sym = \A x y eq. subst refl by eq
 
 trans :
   (A : Type) ->
@@ -8,4 +8,4 @@ trans :
   (y = z) ->
   (x = z)
 trans = \A x y z eq_xy eq_yz.
-  subst (subst Refl by eq_xy) by eq_yz
+  subst (subst refl by eq_xy) by eq_yz

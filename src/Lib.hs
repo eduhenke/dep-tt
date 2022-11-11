@@ -4,11 +4,13 @@ import Control.Monad.Except
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
 import Environment
+import Equality
 import Parser (parseModule)
 import Syntax
 import System.Environment (getArgs)
 import TypeCheck
 import qualified Unbound.Generics.LocallyNameless as Unbound
+import Data.Foldable (find)
 
 var :: String -> TName
 var = Unbound.string2Name
@@ -31,4 +33,12 @@ compile fileName = do
   -- val <- v `exitWith` putParseError
   liftIO $ putStrLn "type checking..."
   m <- liftIO $ typeCheckModule parsed
+  liftIO $ putStrLn "type checked"
+  -- n <- f (var "x") $ declarations parsed 
+  -- k <- whnf n
+  -- liftIO $ print $ k
   liftEither m
+  where
+    f :: TName -> [Decl] -> Maybe Term
+    f x (Def y tm : _) | x == y = Just tm
+    f x (_ : decls) = f x decls

@@ -22,6 +22,8 @@ q = var "q"
 
 c = var "c"
 
+n = var "n"
+
 -- unused
 u = var "_"
 
@@ -33,6 +35,12 @@ assertTypeChecksTo tm expectedTy = do
 
 assertTypeChecks tm = do
   result <- typeCheck tm
+  case result of
+    Left err -> assertFailure $ show err
+    Right ty -> assertBool "must typecheck" True
+
+assertTypeChecksModule mod = do
+  result <- typeCheckModule mod
   case result of
     Left err -> assertFailure $ show err
     Right ty -> assertBool "must typecheck" True
@@ -127,6 +135,59 @@ andCommutes =
 andCommutesProof =
   TestCase $ do
     assertTypeChecks andCommutes
+
+-- nat : Type
+-- nat = (x : Type) -> x -> (x->x) -> x
+natName = var "nat"
+
+natTy =
+  Ann
+    (Pi Type $ bind x $ Pi (Var x) $ bind u $ Pi (Pi (Var x) $ bind u $ Var x) $ bind u $ Var x)
+    Type
+
+zf = var "zf"
+
+sf = var "sf"
+
+-- z : nat
+-- z = λx. λzf. λsf. zf
+natZero =
+  Ann
+    (Lam $ bind x $ Lam $ bind zf $ Lam $ bind sf $ Var zf)
+    (Var natName)
+
+-- s : nat -> nat
+-- s = λn. λx. λzf. λsf. sf (n x zf sf)
+natSuc =
+  Ann
+    (Lam $ bind n $ Lam $ bind x $ Lam $ bind zf $ Lam $ bind sf $ App (Var sf) $ Arg $ App (App (App (Var n) $ Arg (Var x)) $ Arg $ Var zf) $ Arg $ Var sf)
+    (Var natName)
+
+
+-- one : nat
+-- one = s z
+
+-- plus : nat -> nat -> nat
+-- plus = λx. λy. x nat y s
+
+-- one_plus_one_eq_two : ((plus one one) = (s one))
+-- one_plus_one_eq_two = refl
+
+-- -- and_commutes : (p:Type) → (q:Type) → and p q → and q p
+-- -- and_commutes = λp. λq. λa. conj q p (proj2 p q a) (proj1 p q a)
+-- andCommutes =
+--   Ann
+--     (Lam $ bind p $ Lam $ bind q $ Lam $ bind a proofBody)
+--     (Pi Type $ bind p $ Pi Type $ bind q $ Pi andPQ $ bind u andQP)
+--   where
+--     conjQP = App (App conj $ Arg $ Var q) $ Arg $ Var p -- conj q p
+--     proj2PQA = App (App (App proj2 $ Arg $ Var p) $ Arg $ Var q) $ Arg $ Var a -- proj2 p q a
+--     proj1PQA = App (App (App proj1 $ Arg $ Var p) $ Arg $ Var q) $ Arg $ Var a -- proj1 p q a
+--     proofBody = App (App conjQP (Arg proj2PQA)) (Arg proj1PQA)
+
+-- andCommutesProof =
+--   TestCase $ do
+--     assertTypeChecksModule andCommutes
 
 tests = TestList [identity, bool, logicalConjunction, logicalProjection, andCommutesProof]
 

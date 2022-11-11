@@ -1,0 +1,33 @@
+data Nat : Type where {
+  Zero,
+  Succ of (Nat)
+}
+
+plus : (a b : Nat) -> Nat
+plus = λa. λb. case a of {
+  Zero -> b,
+  Succ a' -> Succ (plus a' b)
+}
+
+// applies a function to a equality
+cong : (A B : Type) -> (f : (A -> B)) -> (x y : A) ->
+  x = y ->
+  (f x) = (f y)
+cong = λA B f x y eq_xy. subst refl by eq_xy
+
+suc : Nat -> Nat
+suc = λn. Succ n : Nat
+
+one_eq_one : 1 = 1
+one_eq_one = refl
+
+two_eq_two : 2 = 2
+// 2=2 because we're applying cong with the suc function on the 1=1 proof
+two_eq_two = cong Nat Nat suc 1 1 one_eq_one
+
+// plus_assoc : (m + n) + p = m + (n + p)
+plus_assoc : (m n p: Nat) -> ((plus (plus m n) p) = (plus m (plus n p)))
+plus_assoc = λm. λn. λp. case m of {
+  Zero -> refl,
+  Succ m' -> cong Nat Nat suc ((plus (plus m' n) p)) (plus m' (plus n p)) (plus_assoc m' n p)
+}

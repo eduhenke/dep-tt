@@ -1,17 +1,103 @@
 nat : Type
-nat = (x : Type) -> x -> (x->x) -> x
+nat = (x : Type) -> (x->x) -> x -> x
 
 z : nat
-z = λx. λzf. λsf. zf
+z = λx. λsf. λz. z
 
 s : nat -> nat
-s = λn. λx. λzf. λsf. sf (n x zf sf)
+s = λn. λx. λsf. λz. sf (n x sf z)
 
+one : nat
 one = s z
-two = s one
 
 plus : nat -> nat -> nat
-plus = λx. λy. x nat y s
+plus = λx. λy. x nat s y
 
-plus_zero_n : (n : nat) -> ((plus z n) = n)
-plus_zero_n = \n. Refl
+mult : nat -> nat -> nat
+mult = λm. λn. λx. λsf. λz. m x (n x sf) z
+
+pair_ty : Type -> Type -> Type
+pair_ty = λx. λy. (c : Type) -> (x -> y -> c) -> c
+
+pair_mk : (x : Type) -> (y : Type) -> x -> y -> pair_ty x y
+pair_mk = λx_ty. λy_ty. λx. λy. λc_ty. λf. f x y
+
+first : (x : Type) -> (y : Type) -> pair_ty x y -> x
+first = λx_ty. λy_ty. λp_xy. p_xy x_ty (λx. λy. x)
+
+second : (x : Type) -> (y : Type) -> pair_ty x y -> y
+second = λx_ty. λy_ty. λp_xy. p_xy y_ty (λx. λy. y)
+
+bool : Type
+bool = (x : Type) → x → x → x
+
+true : bool
+true = λx. λy. λz. y
+
+false : bool
+false = λx. λy. λz. z
+
+if : (x:Type) → bool → x → x → x
+if = λx_ty. λb. λtru. λfls. b x_ty tru fls
+
+and : bool -> bool -> bool
+and = λp. λq. p bool q p
+
+is_zero : nat -> bool
+is_zero = λn. n bool (λx. false) true
+
+pc0 : pair_ty nat nat
+pc0 = pair_mk nat nat z z
+
+f : (pair_ty nat nat) -> (pair_ty nat nat) 
+f = λp. pair_mk nat nat (second nat nat p) (s (second nat nat p))
+
+pred : nat -> nat
+pred = λn. first nat nat (n (pair_ty nat nat) f pc0)
+
+minus : nat -> nat -> nat
+minus = λx. λy. y nat pred x
+
+leq : nat -> nat -> bool
+leq = λx. λy. is_zero (minus x y)
+
+eq : nat -> nat -> bool
+eq = λx. λy. and (leq x y) (leq y x)
+
+factorial : nat -> nat
+factorial = λn.
+  if nat (eq n z)
+    one
+    (mult n (factorial (pred n)))
+
+x = factorial (s (s (s (s z))))
+
+// fac_three_eq_six : (factorial (s (s (s z)))) = (s (s (s (s (s (s z))))))
+// fac_three_eq_six = refl
+
+// fac_four_eq_twenty_four : (factorial (s (s (s (s z))))) = (s (s (s (s (s (s (s (s (s (s (s (s (s (s (s (s (s (s (s (s (s (s (s (s z))))))))))))))))))))))))
+// fac_four_eq_twenty_four = refl
+
+// list_ty : Type -> Type
+// list_ty = λa. (x : Type) -> (a -> (list_ty a) -> x) -> x -> x
+// 
+// nil : (a : Type) -> list_ty a
+// nil = λa. λx. λc. λn. n
+// 
+// isnil : (a : Type) -> list_ty a -> bool
+// isnil = λa. λl. l bool (λh. λt. false) true
+// 
+// cons : (a : Type) -> a -> list_ty a -> list_ty a
+// cons = λa. λh. λt. λx. λc. λn. (c h t)
+
+vec_ty : Type -> nat -> Type
+vec_ty = λa. λn. (x : Type) -> (a -> (vec_ty a n) -> x) -> x -> x
+
+nil : (a : Type) -> vec_ty a z
+nil = λa. λx. λcns. λnl. nl
+
+// isnil : (a : Type) -> vec_ty a -> bool
+// isnil = λa. λl. l bool (λh. λt. false) true
+
+// cons : (a : Type) -> (n : nat) -> a -> vec_ty a n -> vec_ty a n
+// cons = λa. λn. λh. λt. λx. λcns. λnl. (cns h t)
