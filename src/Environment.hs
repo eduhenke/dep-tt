@@ -68,7 +68,7 @@ lookupDefMaybe v = do
     findDef (d : ds) = findDef ds
     findDef [] = Nothing
 
-lookupDataDef :: TCName -> TcMonad [ConstructorDef]
+lookupDataDef :: TCName -> TcMonad (Telescope, [ConstructorDef])
 lookupDataDef v = do
   ctx <- asks ctx
   -- traceShowM ctx
@@ -76,10 +76,8 @@ lookupDataDef v = do
     Nothing -> fail "type not found"
     Just defs -> pure defs
   where
-    findDataDef :: [Decl] -> Maybe [ConstructorDef]
-    findDataDef ((Data name defs) : ds) | name == v = Just defs
+    findDataDef ((Data name tele defs) : ds) | name == v = Just (tele, defs)
     findDataDef (d : ds) = findDataDef ds
-
 
 lookupDCon :: DCName -> TcMonad (TCName, Telescope)
 lookupDCon v = do
@@ -90,7 +88,7 @@ lookupDCon v = do
     Just (tcname, tele) -> pure (tcname, tele)
   where
     findDataDefTele :: [Decl] -> Maybe (TCName, Telescope)
-    findDataDefTele ((Data name defs) : ds) = (findDCon defs >>= (\d -> pure (name, d))) `mplus` findDataDefTele ds
+    findDataDefTele ((Data name _ defs) : ds) = (findDCon defs >>= (\d -> pure (name, d))) `mplus` findDataDefTele ds
     findDataDefTele (d : ds) = findDataDefTele ds
     findDataDefTele [] = Nothing
 

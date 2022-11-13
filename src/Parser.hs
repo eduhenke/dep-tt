@@ -15,11 +15,11 @@ import Syntax
 import Text.Megaparsec
 import Text.Megaparsec (MonadParsec (lookAhead, notFollowedBy), setInput)
 import Text.Megaparsec.Char
+import Text.Megaparsec.Char (alphaNumChar)
 import qualified Text.Megaparsec.Char.Lexer as L
 import Text.Megaparsec.Debug (dbg)
 import Text.Megaparsec.Error (errorBundlePretty)
 import qualified Unbound.Generics.LocallyNameless as Unbound
-import Text.Megaparsec.Char (alphaNumChar)
 
 type Parser a = ParsecT Void String (StateT ConstructorNames Unbound.FreshM) a
 
@@ -90,7 +90,9 @@ symbol' :: String -> Parser String
 symbol' = lexeme' . string
 
 reservedNonVals = ["by", "subst", "data", "where", "of"]
+
 reservedVals = ["refl"]
+
 reserved = reservedVals ++ reservedNonVals
 
 identifier :: Parser String
@@ -152,15 +154,15 @@ wildcardName = Unbound.string2Name "_"
 piTy :: Parser Type
 piTy = do
   (vars, ty) <-
-    try $ parens $ do
+    try $
+      parens $ do
         vars <- some $ lexeme binder
         colon
         ty <- expr
         return (vars, ty)
   arrow
-  let
-    mergePi :: TName -> Term -> Term
-    mergePi name body = Pi ty $ Unbound.bind name body
+  let mergePi :: TName -> Term -> Term
+      mergePi name body = Pi ty $ Unbound.bind name body
   body <- expr
   return $ foldr mergePi body vars
 
@@ -176,29 +178,31 @@ subst = do
   return $ Subst a b
 
 dconname :: Parser DCName
-dconname = try $ dbg "dconname" $ do
-  n <- identifier
-  dcnames <- get
-  if not $ S.member n (dconnames dcnames)
-    then fail "no data constructor with that name"
-    else pure n
+dconname = try $
+  dbg "dconname" $ do
+    n <- identifier
+    dcnames <- get
+    if not $ S.member n (dconnames dcnames)
+      then fail "no data constructor with that name"
+      else pure n
 
 dcon :: Parser Term
 dcon = do
   n <- dconname
-  args <- try $ many $ do
-    void $ dbg "dcon space" hspace1
-    nonApp
-  let args' = map Arg args
-  pure $ DCon n args'
+  -- args <- try $ many $ do
+  --   void $ dbg "dcon space" hspace1
+  --   nonApp
+  -- let args' = map Arg args
+  pure $ DCon n []
 
 tconname :: Parser DCName
-tconname = try $ dbg "tconname" $ do
-  n <- identifier
-  tcnames <- get
-  if not $ S.member n (tconnames tcnames)
-    then fail "no type constructor with that name"
-    else pure n
+tconname = try $
+  dbg "tconname" $ do
+    n <- identifier
+    tcnames <- get
+    if not $ S.member n (tconnames tcnames)
+      then fail "no type constructor with that name"
+      else pure n
 
 tcon :: Parser Type
 tcon = lexeme' $ do
@@ -214,7 +218,7 @@ peanoNat = lexeme' $ encode <$> dbg "decimal" L.decimal
   where
     encode :: Int -> Term
     encode 0 = DCon "Zero" []
-    encode n = DCon "Succ" [Arg $ encode (n-1)]
+    encode n = DCon "Succ" [Arg $ encode (n - 1)]
 
 nonApp :: Parser Term
 nonApp =
@@ -234,17 +238,20 @@ nonApp =
       ]
 
 expr :: Parser Term
-expr = dbg "expr" $
-  makeExprParser
-    nonApp
-    [ [InfixR eqTy]
-    , [InfixL app]
-    , [InfixR annotation]
-    , [InfixR wildcardPiTy]]
+expr =
+  dbg "expr" $
+    makeExprParser
+      nonApp
+      [ [InfixR eqTy],
+        [InfixL app],
+        [InfixR annotation],
+        [InfixR wildcardPiTy]
+      ]
   where
     app = appFn <$ dbg "app space" (try hspace1)
     appFn :: Term -> Term -> Term
     appFn (TCon c args) t2 = TCon c $ args ++ [Arg t2]
+    appFn (DCon c args) t2 = DCon c $ args ++ [Arg t2]
     appFn t1 t2 = App t1 (Arg t2)
     annotation = Ann <$ colon
     wildcardPiTy =
@@ -271,14 +278,23 @@ module' = do
     dataDef = dbg "dataDef" $
       try $ do
         dbg "data" $ symbol "data"
-        name <- dbg "tyIdent" $ lexeme $ tyIdentifier
+        name <- dbg "tyIdent" $ lexeme tyIdentifier
+        tele <-
+          Telescope
+            <$> many
+              ( lexeme $
+                  parens $ do
+                    name <- binder
+                    colon
+                    TypeSig name <$> expr
+              )
         dbg "colon" colon
         lexeme type'
         dbg "where" $ symbol "where"
         -- adding cnames before the braces so we can do recursive types
         modify (\cnames -> cnames {tconnames = S.insert name (tconnames cnames)})
         constructorDefs <- braces body
-        return $ Data name constructorDefs
+        return $ Data name tele constructorDefs
       where
         body = lexeme $ sepBy dataConstructor (symbol ",")
         dataConstructor = dbg "datacons" $ do
@@ -313,7 +329,6 @@ telescope = Telescope <$> many telebinding
             <?> "binding"
         )
 
-
 caseExpr :: Parser Term
 caseExpr = do
   dbg "case keyword" $ symbol "case"
@@ -321,19 +336,17 @@ caseExpr = do
   scrut <- dbg "case scrutinee" expr
   dbg "case of" $ symbol "of"
   cases <- dbg "cases" $ braces $ lexeme $ sepBy match (symbol ",")
-  return $ Case scrut cases 
+  return $ Case scrut cases
   where
     match :: Parser Match
     match = dbg "match" $ do
-      pat <- pattern 
+      pat <- pattern
       dbg "match arrow" $ symbol "->"
       -- pos <- getPosition
       body <- dbg "match body" expr
       return $ Match (Unbound.bind pat body)
 
-
-
--- patterns are 
+-- patterns are
 -- p :=  x
 --       _
 --       K p*
@@ -342,20 +355,24 @@ caseExpr = do
 
 -- Note that 'dconstructor' and 'variable' overlaps, annoyingly.
 pattern :: Parser Pattern
-pattern =  dbg "pat" $ try (PatCon <$> (lexeme dconname) <*> (try $ many argPattern))
-       <|> atomicPattern
+pattern =
+  dbg "pat" $
+    try (PatCon <$> lexeme dconname <*> try (many argPattern))
+      <|> atomicPattern
   where
     argPattern, atomicPattern :: Parser Pattern
-    argPattern    =  dbg "argPattern" $ pattern <|> atomicPattern
-    atomicPattern = dbg "atomicPattern" $ lexeme $ 
+    argPattern = dbg "argPattern" $ lexeme $ parens pattern <|> atomicPattern
+    atomicPattern =
+      dbg "atomicPattern" $
+        lexeme $
           (PatVar <$> (symbol "_" *> Unbound.fresh wildcardName))
-      <|> do
-            t <- varOrCon
-            case t of
-              (Var x) -> return $ PatVar x
-              (DCon c []) -> return $ PatCon c []
-              (TCon c []) -> fail "expected a data constructor but a type constructor was found"
-              _ -> error "internal error in atomicPattern"
+            <|> do
+              t <- varOrCon
+              case t of
+                (Var x) -> return $ PatVar x
+                (DCon c []) -> return $ PatCon c []
+                (TCon c []) -> fail "expected a data constructor but a type constructor was found"
+                _ -> error "internal error in atomicPattern"
 
 -- variables or zero-argument constructors
 varOrCon :: Parser Term
@@ -364,9 +381,10 @@ varOrCon = dbg "varOrCon" $ do
   cnames <- get
   if i `S.member` dconnames cnames
     then return (DCon i [])
-    else if i `S.member` tconnames cnames
-      then return (TCon i [])
-      else return (Var (Unbound.string2Name i))
+    else
+      if i `S.member` tconnames cnames
+        then return (TCon i [])
+        else return (Var (Unbound.string2Name i))
 
 parseModule :: String -> String -> Either String Module
 parseModule fileName input =

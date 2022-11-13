@@ -1,17 +1,17 @@
 module TypeCheck where
 
 import Control.Monad
+import Control.Monad (sequence_)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.Reader (MonadReader (local), ReaderT, asks, runReaderT)
 import Data.List
 import Debug.Trace
 import Environment
-import Equality (equate, whnf, unify)
+import Equality (equate, unify, whnf)
 import Syntax
 import qualified Unbound.Generics.LocallyNameless as Unbound
 import Unbound.Generics.LocallyNameless.Operations (unbind)
 import Unbound.Generics.LocallyNameless.Subst (Subst (subst))
-import Control.Monad (sequence_)
 
 inferType :: Term -> TcMonad Type
 inferType t = tcTerm t Nothing
@@ -26,7 +26,8 @@ checkType tm ty = do
   -- traceM ("Checking (" ++ show tm ++ ") : " ++ show ty ++ ". TyNF: " ++ show nf)
   ty' <- tcTerm tm (Just nf)
   pure ()
-  -- traceM ("Checked (" ++ show tm ++ ") : " ++ show ty')
+
+-- traceM ("Checked (" ++ show tm ++ ") : " ++ show ty')
 
 -- | Make sure that the term is a type (i.e. has type 'Type')
 tcType :: Term -> TcMonad ()
@@ -59,6 +60,7 @@ tcTerm (App t1 t2) Nothing = do
   return $ subst x (unArg t2) tyB
 tcTerm (TyEq a b) Nothing = do
   tyA <- inferType a
+
   checkType b tyA
   return Type
 tcTerm (TCon name defs) Nothing = do
@@ -68,23 +70,20 @@ tcTerm (DCon dcname dcargs) Nothing = do
   (tcname, Telescope tele) <- lookupDCon dcname
   tcArgTele dcargs tele
   return $ TCon tcname []
-
-tcTerm (DCon dcname dcargs) (Just ty@(TCon tcname tcargs)) = do
-  dcs <- lookupDataDef tcname
-  case findDC dcs of
-    Nothing -> err ["Data constructor does not match with type constructor", dcname, tcname]
-    (Just (ConstructorDef _ (Telescope decls))) -> do
-      tcArgTele dcargs decls
-      return ty
-  where
-    findDC :: [ConstructorDef] -> Maybe ConstructorDef
-    findDC (def@(ConstructorDef name telescope) : ds) | name == dcname = Just def
-    findDC (d : ds) = findDC ds
-    findDC [] = Nothing
+tcTerm dc@(DCon dcname dcargs) (Just ty@(TCon tcname tcargs)) = do
+  (tctele, dcs) <- lookupDataDef tcname
+  (dconTcName, dctele) <- lookupDCon dcname
+  if dconTcName /= tcname
+    then err ["Expected data constructor", show dc, " to be of type", show ty]
+    else return ()
+  (Telescope dctele') <- substTele tctele (map unArg tcargs) dctele
+  traceShowM ("tcTerm DCon, substituted dctele'", dcname, dctele', dcargs)
+  tcArgTele dcargs dctele'
+  return ty
 tcTerm (Case scrut cases) (Just ty) = do
-  traceM "inferring scrut" 
+  traceM "inferring scrut"
   scrutTy <- inferType scrut
-  traceM "inferred scrut" 
+  traceM "inferred scrut"
   scrut' <- whnf scrut
   traceShowM (scrut, scrutTy, scrut')
   ensureTCon scrutTy
@@ -92,8 +91,9 @@ tcTerm (Case scrut cases) (Just ty) = do
   -- checkMatch :: Match -> TcMonad ()
   let checkMatch (Match bnd) = do
         (pat, body) <- unbind bnd
-        traceShowM (scrut', pat, body, pat2Term pat)
+        traceShowM ("checkMatch", scrut', pat, body, pat2Term pat)
         scrutDecls <- unify [] scrut' (pat2Term pat)
+        traceShowM ("scrutDecls", scrutDecls)
         -- creating the new declarations coming from the pattern
         -- Suc x, will generate a new declaration x : Nat
         patDecls <- declarePat pat scrutTy
@@ -105,45 +105,39 @@ tcTerm (Case scrut cases) (Just ty) = do
   mapM_ checkMatch cases
   return ty
   where
-
     ensureTCon :: Type -> TcMonad (TCName, [Arg])
     ensureTCon (TCon tcname params) = return (tcname, params)
     ensureTCon scrutTy = err ["Expected case scrutinee to have type", show ty, "but found", show scrutTy]
 
     declarePat :: Pattern -> Type -> TcMonad [Decl]
     declarePat pat ty | trace ("declarePat: " ++ show pat ++ ", ty: " ++ show ty) False = undefined
-    declarePat (PatCon dc pats) ty = do 
+    declarePat (PatCon dc pats) ty = do
       (tc, params) <- ensureTCon ty
-      (_, Telescope tele) <- lookupDCon dc
-      traceShowM (dc, tele)
-      -- declarePat pats 
-      -- return []
+      (Telescope tctele, _) <- lookupDataDef tc
+      (_, Telescope dctele) <- lookupDCon dc -- here's the problem
+      (Telescope tele) <- substTele (Telescope tctele) (map unArg params) (Telescope dctele)
+      traceShowM ("declarePat", tc, dc, tele)
       declarePats dc pats tele
-      -- tele <- substTele delta params deltai
-    declarePat (PatVar x)       ty  = return [TypeSig x ty]
+    declarePat (PatVar x) ty = return [TypeSig x ty]
 
-    -- | Given a list of pattern arguments and a telescope, create a binding for 
-    -- each of the variables in the pattern, 
     declarePats :: DCName -> [Pattern] -> [Decl] -> TcMonad [Decl]
     declarePats dc (pat : pats) (TypeSig x ty : tele) = do
       ds1 <- declarePat pat ty
       let tm = pat2Term pat
       ds2 <- extendCtxs ds1 $ declarePats dc pats (subst x tm tele)
       return (ds1 ++ ds2)
-    -- declarePats dc pats (Def x ty : tele) = do
-    --   let ds1 = [Def x ty]
-    --   ds2 <- extendCtxs ds1 $ declarePats dc pats tele
-    --   return (ds1 ++ ds2)
-    declarePats dc []   [] = return []
-    declarePats dc []    _ = err ["Not enough patterns in match for data constructor", show dc]
+    declarePats dc pats (Def x ty : tele) = do
+      let ds1 = [Def x ty]
+      ds2 <- extendCtxs ds1 $ declarePats dc pats tele
+      return (ds1 ++ ds2)
+    declarePats dc [] [] = return []
+    declarePats dc [] _ = err ["Not enough patterns in match for data constructor", show dc]
     declarePats dc pats [] = err ["Too many patterns in match for data constructor", show dc]
-    declarePats dc _    _ = err ["Invalid telescope", show dc]
-    -- | Convert a pattern to a term 
-    pat2Term :: Pattern ->  Term
+    declarePats dc _ _ = err ["Invalid telescope", show dc]
+
+    pat2Term :: Pattern -> Term
     pat2Term (PatVar x) = Var x
     pat2Term (PatCon dc pats) = DCon dc (map (Arg . pat2Term) pats)
-
-
 tcTerm (Lam bnd) (Just ty@(Pi tyA bnd')) = do
   tcType tyA
   -- warning: you can't use unbind two times in a row here,
@@ -199,11 +193,11 @@ tcModule m = do
       -- traceM ("tcDecl: " ++ show decl ++ ", decls_ctx: " ++ show decls)
       extendCtxs decls $ tcType ty
       pure $ decl : decls
-    tcDecl decl@(Data name def) mdecls = do
+    tcDecl decl@(Data name tele def) mdecls = do
       decls <- mdecls
       -- traceM ("tcDecl: " ++ show decl ++ ", decls_ctx: " ++ show decls)
       -- extendCtxs decls $ tcType ty
-      pure $ Data name def : decls
+      pure $ Data name tele def : decls
 
 -- helpers
 
@@ -218,40 +212,59 @@ def t1 t2 = do
     _ -> return []
 
 tcArgTele :: [Arg] -> [Decl] -> TcMonad ()
-tcArgTele args tele | trace ("tcArgTele: " ++ show args ++ " , " ++ show tele) False = undefined
-tcArgTele [] [] = return ()
-tcArgTele [] _ = err ["Missing arguments"]
-tcArgTele _  [] = err ["Too many arguments"]
+-- tcArgTele args tele | trace ("tcArgTele: " ++ show args ++ " , " ++ show tele) False = undefined
 -- Tele-Sig
 tcArgTele ((Arg {unArg = arg}) : args) (TypeSig n ty : tele) = do
   checkType arg ty
   tele' <- doSubst [(n, arg)] tele
   tcArgTele args tele'
 -- Tele-Def
-tcArgTele ((Arg {unArg = arg}) : args) (Def x ty : tele) = do
+tcArgTele args (Def x ty : tele) = do
   tele' <- doSubst [(x, ty)] tele
   tcArgTele args tele'
+tcArgTele [] [] = return ()
+tcArgTele [] _ = err ["Missing arguments"]
+tcArgTele _ [] = err ["Too many arguments"]
 tcArgTele args tele = err ["Invalid telescope", show args, show tele]
 
 -- Propagate the given substitution through the telescope, potentially
 -- reworking the constraints
 doSubst :: [(TName, Term)] -> [Decl] -> TcMonad [Decl]
-doSubst ss tele | trace ("doSubst, ss: " ++ show ss ++ ", tele: " ++ show tele) False = undefined
+-- doSubst ss tele | trace ("doSubst, ss: " ++ show ss ++ ", tele: " ++ show tele) False = undefined
 doSubst ss [] = return []
 doSubst ss (Def x ty : tele') = do
   let tx' = Unbound.substs ss (Var x)
   let ty' = Unbound.substs ss ty
   decls1 <- unify [] tx' ty'
   decls2 <- extendCtxs decls1 (doSubst ss tele')
-  traceShowM (ss, x, tx', ty, ty', decls1, decls2)
+  -- traceShowM ("doSubst", ss, x, tx', ty, ty', decls1, decls2)
   return $ decls1 ++ decls2
 doSubst ss (TypeSig name ty : tele) = do
   tynf <- whnf (Unbound.substs ss ty)
   tele' <- doSubst ss tele
   return $ TypeSig name tynf : tele'
-doSubst args tele = 
+doSubst args tele =
   err ["Invalid telescope(doSubst)", show args, show tele]
 
+-- given the TCon's telescope
+-- a ordered list representing each argument of that telescope
+-- and the DCon telescope
+-- returns the substituted DCon telescope
+substTele :: Telescope -> [Term] -> Telescope -> TcMonad Telescope
+substTele (Telescope tctele) args (Telescope dctele) = Telescope <$> doSubst (mkSubst tctele args) dctele
+  where
+    mkSubst [] [] = []
+    mkSubst (TypeSig x _ : tele') (tm : tms) =
+      (x, tm) : mkSubst tele' tms
+    mkSubst _ _ = error "Internal error: substTele given illegal arguments"
 
-teleSubst :: [(TName, Term)] -> [Decl] -> TcMonad [Decl]
-teleSubst [] [] = return []
+-- Given a particular type and a list of patterns, make
+-- sure that the patterns cover all potential cases for that type.
+-- If the list of patterns starts with a variable, then it doesn't
+-- matter what the type is, the variable is exhaustive. (This code
+-- does not report unreachable patterns.)
+-- Otherwise, the scrutinee type must be a type constructor, so the
+-- code looks up the data constructors for that type and makes sure that
+-- there are patterns for each one.
+exhaustivityCheck :: Term -> Type -> [Pattern] -> TcMonad ()
+exhaustivityCheck scrut ty (PatVar x : _) = return ()
