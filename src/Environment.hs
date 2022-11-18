@@ -1,17 +1,17 @@
 module Environment where
 
 import Control.Monad
+import Control.Monad (MonadPlus (mplus))
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.Reader (MonadReader (local), ReaderT, asks, runReaderT)
 import Data.List
+import Data.Maybe (fromMaybe)
 import Debug.Trace
 import GHC.IO.Unsafe (unsafePerformIO)
 import Syntax
 import qualified Unbound.Generics.LocallyNameless as Unbound
 import Unbound.Generics.LocallyNameless.Operations (unbind)
 import Unbound.Generics.LocallyNameless.Subst (Subst (subst))
-import Data.Maybe (fromMaybe)
-import Control.Monad (MonadPlus(mplus))
 
 type TcMonad = Unbound.FreshMT (ReaderT Env (ExceptT Err IO))
 
@@ -76,7 +76,7 @@ lookupDataDef v = do
     Nothing -> fail "type not found"
     Just defs -> pure defs
   where
-    findDataDef ((Data name tele defs) : ds) | name == v = Just (tele, defs)
+    findDataDef ((DataDef name tele defs) : ds) | name == v = Just (tele, defs)
     findDataDef (d : ds) = findDataDef ds
 
 lookupDCon :: DCName -> TcMonad (TCName, Telescope)
@@ -88,7 +88,7 @@ lookupDCon v = do
     Just (tcname, tele) -> pure (tcname, tele)
   where
     findDataDefTele :: [Decl] -> Maybe (TCName, Telescope)
-    findDataDefTele ((Data name _ defs) : ds) = (findDCon defs >>= (\d -> pure (name, d))) `mplus` findDataDefTele ds
+    findDataDefTele ((DataDef name _ defs) : ds) = (findDCon defs >>= (\d -> pure (name, d))) `mplus` findDataDefTele ds
     findDataDefTele (d : ds) = findDataDefTele ds
     findDataDefTele [] = Nothing
 

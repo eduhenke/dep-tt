@@ -86,15 +86,15 @@ bool =
     assertTypeChecks cond
     assertTypeChecks and'
 
-andPQ = App (App and' (Arg $ Var p)) (Arg $ Var q)
+andPQ = App (App and' (Var p)) (Var q)
 
-andQP = App (App and' (Arg $ Var q)) (Arg $ Var p)
+andQP = App (App and' (Var q)) (Var p)
 
 -- conj : (p: Type) → (q:Type) → p → q → and p q
 -- conj = λp.λq. λx.λy. λc. λf. f x y
 conj =
   Ann
-    (Lam $ bind p $ Lam $ bind q $ Lam $ bind x $ Lam $ bind y $ Lam $ bind c $ Lam $ bind f $ App (App (Var f) (Arg $ Var x)) (Arg $ Var y))
+    (Lam $ bind p $ Lam $ bind q $ Lam $ bind x $ Lam $ bind y $ Lam $ bind c $ Lam $ bind f $ App (App (Var f) (Var x)) (Var y))
     (Pi Type $ bind p $ Pi Type $ bind q $ Pi (Var p) $ bind u $ Pi (Var q) $ bind u $ andPQ)
 
 logicalConjunction =
@@ -105,14 +105,14 @@ logicalConjunction =
 -- proj1 = λp. λq. λa. a p (λx.λy.x)
 proj1 =
   Ann
-    (Lam $ bind p $ Lam $ bind q $ Lam $ bind a $ App (App (Var a) (Arg $ Var p)) $ Arg $ Lam $ bind x $ Lam $ bind y $ Var x)
+    (Lam $ bind p $ Lam $ bind q $ Lam $ bind a $ App (App (Var a) (Var p)) $ Lam $ bind x $ Lam $ bind y $ Var x)
     (Pi Type $ bind p $ Pi Type $ bind q $ Pi andPQ $ bind u $ Var p)
 
 -- proj2 : (p: Type) → (q:Type) → and p q → q
 -- proj2 = λp. λq. λa. a q (λx.λy.y)
 proj2 =
   Ann
-    (Lam $ bind p $ Lam $ bind q $ Lam $ bind a $ App (App (Var a) (Arg $ Var q)) $ Arg $ Lam $ bind x $ Lam $ bind y $ Var y)
+    (Lam $ bind p $ Lam $ bind q $ Lam $ bind a $ App (App (Var a) (Var q)) $ Lam $ bind x $ Lam $ bind y $ Var y)
     (Pi Type $ bind p $ Pi Type $ bind q $ Pi andPQ $ bind u $ Var q)
 
 logicalProjection =
@@ -127,10 +127,10 @@ andCommutes =
     (Lam $ bind p $ Lam $ bind q $ Lam $ bind a proofBody)
     (Pi Type $ bind p $ Pi Type $ bind q $ Pi andPQ $ bind u andQP)
   where
-    conjQP = App (App conj $ Arg $ Var q) $ Arg $ Var p -- conj q p
-    proj2PQA = App (App (App proj2 $ Arg $ Var p) $ Arg $ Var q) $ Arg $ Var a -- proj2 p q a
-    proj1PQA = App (App (App proj1 $ Arg $ Var p) $ Arg $ Var q) $ Arg $ Var a -- proj1 p q a
-    proofBody = App (App conjQP (Arg proj2PQA)) (Arg proj1PQA)
+    conjQP = App (App conj $ Var q) $ Var p -- conj q p
+    proj2PQA = App (App (App proj2 $ Var p) $ Var q) $ Var a -- proj2 p q a
+    proj1PQA = App (App (App proj1 $ Var p) $ Var q) $ Var a -- proj1 p q a
+    proofBody = App (App conjQP proj2PQA) proj1PQA
 
 andCommutesProof =
   TestCase $ do
@@ -160,9 +160,8 @@ natZero =
 -- s = λn. λx. λzf. λsf. sf (n x zf sf)
 natSuc =
   Ann
-    (Lam $ bind n $ Lam $ bind x $ Lam $ bind zf $ Lam $ bind sf $ App (Var sf) $ Arg $ App (App (App (Var n) $ Arg (Var x)) $ Arg $ Var zf) $ Arg $ Var sf)
+    (Lam $ bind n $ Lam $ bind x $ Lam $ bind zf $ Lam $ bind sf $ App (Var sf) $ App (App (App (Var n) $ (Var x)) $ Var zf) $ Var sf)
     (Var natName)
-
 
 -- one : nat
 -- one = s z
@@ -180,10 +179,10 @@ natSuc =
 --     (Lam $ bind p $ Lam $ bind q $ Lam $ bind a proofBody)
 --     (Pi Type $ bind p $ Pi Type $ bind q $ Pi andPQ $ bind u andQP)
 --   where
---     conjQP = App (App conj $ Arg $ Var q) $ Arg $ Var p -- conj q p
---     proj2PQA = App (App (App proj2 $ Arg $ Var p) $ Arg $ Var q) $ Arg $ Var a -- proj2 p q a
---     proj1PQA = App (App (App proj1 $ Arg $ Var p) $ Arg $ Var q) $ Arg $ Var a -- proj1 p q a
---     proofBody = App (App conjQP (Arg proj2PQA)) (Arg proj1PQA)
+--     conjQP = App (App conj $ Var q) $ Var p -- conj q p
+--     proj2PQA = App (App (App proj2 $ Var p) $ Var q) $ Var a -- proj2 p q a
+--     proj1PQA = App (App (App proj1 $ Var p) $ Var q) $ Var a -- proj1 p q a
+--     proofBody = App (App conjQP (proj2PQA)) (proj1PQA)
 
 -- andCommutesProof =
 --   TestCase $ do

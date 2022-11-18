@@ -12,17 +12,25 @@ import Unbound.Generics.LocallyNameless (Subst (substs), unbind, unbind2)
 import qualified Unbound.Generics.LocallyNameless as Unbound
 
 equate :: Term -> Term -> TcMonad ()
+-- two terms are equal, if they are alpha-equivalent
+-- i.e., by just properly renaming the variables
+-- they are the same term
 equate t1 t2 | aeq t1 t2 = return ()
 equate t1 t2 = do
   nf1 <- whnf t1
   nf2 <- whnf t2
   case (nf1, nf2) of
     (Lam bnd1, Lam bnd2) -> do
+      -- get the body of each lambda
       (_, t1, _, t2) <- unbind2Plus bnd1 bnd2
+      -- lambdas are equal, if their bodies are equal
       equate t1 t2
-    (App a1 a2, App b1 b2) -> do
-      equate a1 b1
-      equate (unArg a2) (unArg b2)
+    -- application is equal when:
+    -- - both functions are equal and
+    -- - both args are equal
+    (App f1 x1, App f2 x2) -> do
+      equate f1 f2
+      equate x1 x2
     (Pi ty1 bnd1, Pi ty2 bnd2) -> do
       equate ty1 ty2
       (_, t1, _, t2) <- unbind2Plus bnd1 bnd2
@@ -55,9 +63,9 @@ equate t1 t2 = do
         zipWithM_ matchBr brs1 brs2
     (_, _) -> err ["Expected", show nf1, "but found", show nf2]
 
-equateArgs :: [Arg] -> [Arg] -> TcMonad ()
+equateArgs :: [Term] -> [Term] -> TcMonad ()
 equateArgs (a1 : t1s) (a2 : t2s) = do
-  unArg a1 `equate` unArg a2
+  a1 `equate` a2
   equateArgs t1s t2s
 equateArgs [] [] = return ()
 equateArgs a1 a2 =
@@ -75,18 +83,14 @@ whnf (Var x) = do
   maybeTm <- lookupDefMaybe x
   case maybeTm of
     (Just tm) -> whnf tm
-    _ ->
-      -- maybeTy <- lookupTyMaybe x
-      -- case maybeTy of
-      --   (Just ty) -> whnf ty
-      pure $ Var x
+    _ -> pure $ Var x
 whnf (App a b) = do
   v <- whnf a
   case v of
     -- WHNF-Lam-Beta
     (Lam bnd) -> do
       (x, a') <- unbind bnd
-      whnf $ subst x (unArg b) a'
+      whnf $ subst x b a'
     -- WHNF-Lam-Cong
     _ -> return $ App v b
 whnf (Ann tm _) = return tm
@@ -130,7 +134,7 @@ patternMatches t pat = do
     (DCon d [], PatCon d' pats) | d == d' -> return []
     (DCon d args, PatCon d' pats)
       | d == d' ->
-        concat <$> zipWithM patternMatches (map unArg args) pats
+        concat <$> zipWithM patternMatches args pats
     _ -> err ["arg", show nf, "doesn't match pattern", show pat]
 
 -- | 'Unify' the two terms, producing a list of Defs
@@ -146,7 +150,7 @@ unify ns tx ty = do
     else case (txnf, tynf) of
       (Var y, yty) | y `notElem` ns -> return [Def y yty]
       (yty, Var y) | y `notElem` ns -> return [Def y yty]
-      (TyEq a1 a2, TyEq b1 b2) -> unifyArgs [Arg a1, Arg a2] [Arg b1, Arg b2]
+      (TyEq a1 a2, TyEq b1 b2) -> unifyArgs [a1, a2] [b1, b2]
       (TCon s1 tms1, TCon s2 tms2)
         | s1 == s2 -> unifyArgs tms1 tms2
       (DCon s1 a1s, DCon s2 a2s)
@@ -164,7 +168,7 @@ unify ns tx ty = do
           then return []
           else err ["Cannot equate", show txnf, "and", show tynf]
   where
-    unifyArgs (Arg t1 : a1s) (Arg t2 : a2s) = do
+    unifyArgs (t1 : a1s) (t2 : a2s) = do
       ds <- unify ns t1 t2
       ds' <- unifyArgs a1s a2s
       return $ ds ++ ds'

@@ -29,11 +29,12 @@ checkType tm ty = do
 
 -- traceM ("Checked (" ++ show tm ++ ") : " ++ show ty')
 
--- | Make sure that the term is a type (i.e. has type 'Type')
+-- Make sure that the term is a type (i.e. has type 'Type')
 tcType :: Term -> TcMonad ()
 tcType tm = void $ checkType tm Type
 
 tcTerm :: Term -> Maybe Type -> TcMonad Type
+-- Infer-mode
 tcTerm tm Nothing | trace ("Inferring " ++ show tm) False = undefined
 tcTerm tm (Just ty) | trace ("Checking (" ++ show tm ++ ") to be " ++ show ty) False = undefined
 tcTerm (Var x) Nothing = lookupTy x
@@ -56,11 +57,10 @@ tcTerm (App t1 t2) Nothing = do
       ensurePi ty = err ["Expected a function type, but found ", show ty]
   nf1 <- whnf ty1
   (x, tyA, tyB) <- ensurePi nf1
-  checkType (unArg t2) tyA
-  return $ subst x (unArg t2) tyB
+  checkType t2 tyA
+  return $ subst x t2 tyB
 tcTerm (TyEq a b) Nothing = do
   tyA <- inferType a
-
   checkType b tyA
   return Type
 tcTerm (TCon name defs) Nothing = do
@@ -70,13 +70,15 @@ tcTerm (DCon dcname dcargs) Nothing = do
   (tcname, Telescope tele) <- lookupDCon dcname
   tcArgTele dcargs tele
   return $ TCon tcname []
+tcTerm tm Nothing = err ["Must have a type annotation to check ", show tm]
+-- Check-mode
 tcTerm dc@(DCon dcname dcargs) (Just ty@(TCon tcname tcargs)) = do
   (tctele, dcs) <- lookupDataDef tcname
   (dconTcName, dctele) <- lookupDCon dcname
   if dconTcName /= tcname
     then err ["Expected data constructor", show dc, " to be of type", show ty]
     else return ()
-  (Telescope dctele') <- substTele tctele (map unArg tcargs) dctele
+  (Telescope dctele') <- substTele tctele tcargs dctele
   traceShowM ("tcTerm DCon, substituted dctele'", dcname, dctele', dcargs)
   tcArgTele dcargs dctele'
   return ty
@@ -105,7 +107,7 @@ tcTerm (Case scrut cases) (Just ty) = do
   mapM_ checkMatch cases
   return ty
   where
-    ensureTCon :: Type -> TcMonad (TCName, [Arg])
+    ensureTCon :: Type -> TcMonad (TCName, [Term])
     ensureTCon (TCon tcname params) = return (tcname, params)
     ensureTCon scrutTy = err ["Expected case scrutinee to have type", show ty, "but found", show scrutTy]
 
@@ -115,7 +117,7 @@ tcTerm (Case scrut cases) (Just ty) = do
       (tc, params) <- ensureTCon ty
       (Telescope tctele, _) <- lookupDataDef tc
       (_, Telescope dctele) <- lookupDCon dc -- here's the problem
-      (Telescope tele) <- substTele (Telescope tctele) (map unArg params) (Telescope dctele)
+      (Telescope tele) <- substTele (Telescope tctele) params (Telescope dctele)
       traceShowM ("declarePat", tc, dc, tele)
       declarePats dc pats tele
     declarePat (PatVar x) ty = return [TypeSig x ty]
@@ -137,7 +139,7 @@ tcTerm (Case scrut cases) (Just ty) = do
 
     pat2Term :: Pattern -> Term
     pat2Term (PatVar x) = Var x
-    pat2Term (PatCon dc pats) = DCon dc (map (Arg . pat2Term) pats)
+    pat2Term (PatCon dc pats) = DCon dc (map pat2Term pats)
 tcTerm (Lam bnd) (Just ty@(Pi tyA bnd')) = do
   tcType tyA
   -- warning: you can't use unbind two times in a row here,
@@ -167,7 +169,6 @@ tcTerm tm (Just ty) = do
   ty' <- inferType tm
   ty `equate` ty'
   return ty'
-tcTerm tm Nothing = err ["Must have a type annotation to check ", show tm]
 
 tcModule :: Module -> TcMonad Module
 tcModule m = do
@@ -193,11 +194,11 @@ tcModule m = do
       -- traceM ("tcDecl: " ++ show decl ++ ", decls_ctx: " ++ show decls)
       extendCtxs decls $ tcType ty
       pure $ decl : decls
-    tcDecl decl@(Data name tele def) mdecls = do
+    tcDecl decl@(DataDef name tele def) mdecls = do
       decls <- mdecls
       -- traceM ("tcDecl: " ++ show decl ++ ", decls_ctx: " ++ show decls)
       -- extendCtxs decls $ tcType ty
-      pure $ Data name tele def : decls
+      pure $ DataDef name tele def : decls
 
 -- helpers
 
@@ -211,10 +212,10 @@ def t1 t2 = do
     (_, Var x) -> return [Def x nf1]
     _ -> return []
 
-tcArgTele :: [Arg] -> [Decl] -> TcMonad ()
+tcArgTele :: [Term] -> [Decl] -> TcMonad ()
 -- tcArgTele args tele | trace ("tcArgTele: " ++ show args ++ " , " ++ show tele) False = undefined
 -- Tele-Sig
-tcArgTele ((Arg {unArg = arg}) : args) (TypeSig n ty : tele) = do
+tcArgTele (arg : args) (TypeSig n ty : tele) = do
   checkType arg ty
   tele' <- doSubst [(n, arg)] tele
   tcArgTele args tele'

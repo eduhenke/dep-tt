@@ -189,10 +189,6 @@ dconname = try $
 dcon :: Parser Term
 dcon = do
   n <- dconname
-  -- args <- try $ many $ do
-  --   void $ dbg "dcon space" hspace1
-  --   nonApp
-  -- let args' = map Arg args
   pure $ DCon n []
 
 tconname :: Parser DCName
@@ -207,10 +203,6 @@ tconname = try $
 tcon :: Parser Type
 tcon = lexeme' $ do
   n <- tconname
-  -- args <- dbg "tconargs" $ many $ try $ do
-  --   void $ dbg "tcon space" hspace1
-  --   nonApp
-  -- let args' = map Arg args
   pure $ TCon n []
 
 peanoNat :: Parser Term
@@ -218,7 +210,7 @@ peanoNat = lexeme' $ encode <$> dbg "decimal" L.decimal
   where
     encode :: Int -> Term
     encode 0 = DCon "Zero" []
-    encode n = DCon "Succ" [Arg $ encode (n - 1)]
+    encode n = DCon "Succ" [encode (n - 1)]
 
 nonApp :: Parser Term
 nonApp =
@@ -250,9 +242,9 @@ expr =
   where
     app = appFn <$ dbg "app space" (try hspace1)
     appFn :: Term -> Term -> Term
-    appFn (TCon c args) t2 = TCon c $ args ++ [Arg t2]
-    appFn (DCon c args) t2 = DCon c $ args ++ [Arg t2]
-    appFn t1 t2 = App t1 (Arg t2)
+    appFn (TCon c args) t2 = TCon c $ args ++ [t2]
+    appFn (DCon c args) t2 = DCon c $ args ++ [t2]
+    appFn t1 t2 = App t1 t2
     annotation = Ann <$ colon
     wildcardPiTy =
       (\varName t1 t2 -> Pi t1 $ Unbound.bind varName t2)
@@ -294,7 +286,7 @@ module' = do
         -- adding cnames before the braces so we can do recursive types
         modify (\cnames -> cnames {tconnames = S.insert name (tconnames cnames)})
         constructorDefs <- braces body
-        return $ Data name tele constructorDefs
+        return $ DataDef name tele constructorDefs
       where
         body = lexeme $ sepBy dataConstructor (symbol ",")
         dataConstructor = dbg "datacons" $ do

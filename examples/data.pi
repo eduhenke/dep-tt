@@ -3,10 +3,21 @@ data Nat : Type where {
   Succ of (Nat)
 }
 
+data Bool : Type where {
+  False,
+  True
+}
+
 plus : (a b : Nat) -> Nat
 plus = λa. λb. case a of {
   Zero -> b,
   Succ a' -> Succ (plus a' b)
+}
+
+mult : (a b : Nat) -> Nat
+mult = λa. λb. case a of {
+  Zero -> Zero,
+  Succ a' -> plus b (mult a' b)
 }
 
 // applies a function to a equality
@@ -31,3 +42,12 @@ plus_assoc = λm. λn. λp. case m of {
   Zero -> refl,
   Succ m' -> cong Nat Nat suc ((plus (plus m' n) p)) (plus m' (plus n p)) (plus_assoc m' n p)
 }
+
+factorial : Nat -> Nat
+factorial = λn. case n of {
+  Zero -> 1,
+  Succ n' -> mult n (factorial n')
+}
+
+fact_4 : (factorial 4) = 24
+fact_4 = refl

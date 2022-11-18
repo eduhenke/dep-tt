@@ -19,11 +19,11 @@ data Vec (A : Type) (n : Nat) : Type where {
   Cons of (m : Nat) (A) (Vec A m) [n = Succ m]
 }
 
-v : Vec Bool 0
-v = Nil
+empty_bool_vec : Vec Bool 0
+empty_bool_vec = Nil
 
-v' : Vec Bool 2
-v' = Cons 1 False (Cons 0 True Nil)
+bool_vec : Vec Bool 2
+bool_vec = Cons 1 False (Cons 0 True Nil)
 
 
 concat : (A : Type) -> (m n: Nat) -> Vec A m -> Vec A n -> Vec A (plus m n)
@@ -32,11 +32,29 @@ concat = λA m n a b. case a of {
   Cons m' h t -> Cons (plus m' n) h (concat A m' n t b)
 }
 
-vmap : (A B : Type) -> (n : Nat) -> (f : (A -> B)) -> Vec A n -> Vec B n
-vmap = λA B n f v. case v of {
+map : (A B : Type) -> (n : Nat) -> (f : (A -> B)) -> Vec A n -> Vec B n
+map = λA B n f v. case v of {
   Nil -> Nil,
-  Cons n' h t -> Cons n' (f h) (vmap A B n' f t)
+  Cons n' h t -> Cons n' (f h) (map A B n' f t)
 }
 
-natv : Vec Nat 2
-natv = vmap Bool Nat 2 (λb. case b of {False -> 0, True -> 1}) v'
+nat_vec : Vec Nat 2
+nat_vec = map Bool Nat 2 (λb. case b of {False -> 10, True -> 20}) bool_vec
+
+p_natv : nat_vec = (Cons 1 10 (Cons 0 20 Nil))
+p_natv = refl
+
+head : (A : Type) -> (n : Nat) -> Vec A (Succ n) -> A
+head = λA n v. case v of {
+  Cons _ h _ -> h
+}
+
+p_head : (head Nat 1 nat_vec) = 10
+p_head = refl
+
+// the following lines do not type-check
+// because when we pass 0 as argument
+// the length of the expected vec argument is (Succ 0), which
+// does not match with the length of the actual vector(which is 0)
+// p_head_empty : (head Bool 0 empty_bool_vec) = 0
+// p_head_empty = refl
